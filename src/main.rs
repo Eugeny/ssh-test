@@ -146,12 +146,19 @@ async fn handle_req(mut channel: Channel<Msg>, mut stream: TcpStream, unique_id:
         error!("Error in forwarding request to server: {:?}", e);
     };
 
+    let mut closed = false;
+    // tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
     debug!("Waiting for response");
     let mut total_len = 0usize;
     while let Some(msg) = channel.wait().in_current_span().await {
         debug!("Received response from server = {:?}", &msg);
         match msg {
             ChannelMsg::Data { ref data } => {
+                if !closed {
+                    closed = true;
+                    channel.eof().await.unwrap();
+                }
                 debug!("Writing response to client");
                 let mut b = Vec::<u8>::new();
                 data.write_all_from(0, &mut b).unwrap();
@@ -166,7 +173,7 @@ async fn handle_req(mut channel: Channel<Msg>, mut stream: TcpStream, unique_id:
                 debug!("Response written to client");
             }
             ChannelMsg::Eof | ChannelMsg::Close => {
-                debug!("End of data to be received");
+                debug!("Close received");
                 break;
             }
             _ => error!("Unknown message: {:?}", msg),
